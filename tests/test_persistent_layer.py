@@ -1,5 +1,5 @@
 import pandas as pd
-from finance import persistent_layer as pl
+from finance import database as pl
 
 df = pd.DataFrame(data=[[1, 2, 3], [4, 5, 6]], columns=["A", "B", "C"])
 

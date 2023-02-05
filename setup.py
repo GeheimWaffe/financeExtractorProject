@@ -1,12 +1,14 @@
 from setuptools import setup
 
 setup(
-    name='FinanceExtractor',
-    version='1.0.0',
-    packages=[''],
-    url='',
+    name='pyfin_loader',
+    version='1.0.10',
+    packages=['finance'],
+    entry_points = {'console_scripts': ['pyfin_load=finance.__main__:main']},
+    install_requires=['pandas', 'SQLAlchemy', 'setuptools', 'pyexcel_ods3', 'psycopg2-binary'],
+    url='www.pyfin.org',
     license='GNU',
-    author='vincent',
-    author_email='vince1133@yahoo.r',
-    description='This is the greatest application in the world'
+    author='vincent scherrer',
+    author_email='vince1133@yahoo.fr',
+    description='This is my loader program'
 )
