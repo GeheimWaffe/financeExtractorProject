@@ -2,10 +2,10 @@
 We first define the main function
 """
 import shutil
-import sqlalchemy as sqla
 import pandas as pd
 import pyexcel_ods3
 from datetime import datetime
+from finance.database import load_to_table
 
 from pathlib import Path
 
@@ -131,9 +131,6 @@ class FileLoader:
             :return: a cleaned up data frame
             """
         # first we select the right columns
-
-
-
         droppable_columns = [x for x in df.columns if x not in self.__acceptables_columns]
 
         df = df.drop(columns=droppable_columns)
@@ -163,26 +160,12 @@ class FileLoader:
 
         return df
 
-    def save_dataframe_to_sql(self, df: pd.DataFrame, tablename: str) -> int:
+    def save_dataframe_to_sql(self, df: pd.DataFrame) -> int:
         """
         Save the data frame to the PostGres database
-        :param df: the data frame to save
-        :param tablename: the target table
-        :return:
         """
-        # create the engine
 
-        e = sqla.create_engine('postgresql://regular_user:user_password@localhost:5432/finance')
-
-        # truncate the table. Necessary as there are views built on the schema.
-        with e.connect() as conn:
-            # truncate the table
-            conn.execute(sqla.text('TRUNCATE comptes'))
-
-        # append the data
-        # Append the new data
-        result = int(df.to_sql(tablename, e, schema='public', if_exists='append'))
-        return result
+        return load_to_table('comptes', df)
 
     def save_dataframe_to_csv(self, df: pd.DataFrame, filename: str, append_timestamp: bool) -> bool:
         """
@@ -200,11 +183,6 @@ class FileLoader:
             global_filepath = Path.home().joinpath(
                 ''.join([filename, ' ', '.csv']))
         return True
-
-    def load_dataframe(self,df: pd.DataFrame) -> bool:
-        # save the data frame
-        import_result = self.save_dataframe_to_sql(df, self.__table_comptes__)
-        return import_result
 
 def stage():
     print("*** Starting Finance Extractor... ***")
@@ -248,7 +226,8 @@ def load():
     acceptable_columns = ('Catégorie', 'Compte', 'Date', "Date d'insertion",
                           'Description', 'Dépense', 'Economie',
                           'File Year', 'Mois', 'Recette', 'Réglé',
-                          'Provision à payer', 'Provision à récupérer')
+                          'Provision à payer', 'Provision à récupérer',
+                          'Date remboursement', 'Organisme')
 
     fl = FileLoader(acceptable_columns)
     p: Path
@@ -268,7 +247,7 @@ def load():
         print(f'dataframes merged : {len(global_df)} rows in total')
         global_df = fl.cleanup_dataframe(global_df)
         print(f'* global dataframe cleaned up, following columns : {global_df.columns}')
-        loaded_rows = fl.load_dataframe(global_df)
+        loaded_rows = fl.save_dataframe_to_sql(global_df)
         print(f'dataframe loaded : {loaded_rows} loaded')
     else:
         print(f'no dataframes found')
