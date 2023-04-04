@@ -2,7 +2,7 @@ from setuptools import setup
 
 setup(
     name='pyfin_loader',
-    version='1.0.11',
+    version='1.0.14',
     packages=['finance'],
     entry_points = {'console_scripts': ['pyfin_load=finance.__main__:main']},
     install_requires=['pandas', 'SQLAlchemy', 'setuptools', 'pyexcel_ods3', 'psycopg2-binary'],

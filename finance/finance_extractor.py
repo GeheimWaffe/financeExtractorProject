@@ -6,6 +6,7 @@ import pandas as pd
 import pyexcel_ods3
 from datetime import datetime
 from finance.database import load_to_table
+from finance.database import get_row_count
 
 from pathlib import Path
 
@@ -101,6 +102,12 @@ class FileLoader:
         result = result.replace({'nan': 'false', 'True': 'true', 'False': 'false', '0': 'false', '1': 'true'})
         return result
 
+    def clean_categories(self, col: pd.Series) -> pd.Series:
+        """ cleans up the categories by making them unified"""
+        result = col.astype(str)
+        result = result.str.title()
+        return result
+
     def get_fileyear(self, p: Path) -> int:
         """
         calculates the year of a comptes extract. Expectation : the file should be named Comptes YYYY
@@ -155,6 +162,9 @@ class FileLoader:
         # clean up the month
         df['Mois'] = pd.to_datetime(df['Mois'])
 
+        # clean up the catégories
+        df['Catégorie'] = self.clean_categories(df['Catégorie'])
+
         # Add a date checker column
         df['Date Out of Bound'] = df['Date.Year'] > df['File Year']
 
@@ -165,7 +175,9 @@ class FileLoader:
         Save the data frame to the PostGres database
         """
 
-        return load_to_table('comptes', df)
+        rows = load_to_table('comptes', df)
+        rows = get_row_count('comptes')
+        return rows
 
     def save_dataframe_to_csv(self, df: pd.DataFrame, filename: str, append_timestamp: bool) -> bool:
         """
