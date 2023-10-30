@@ -1,9 +1,16 @@
+import time
 from pathlib import Path
 import sys
 from finance.finance_extractor import load
 from finance.finance_extractor import stage
 from finance.finance_extractor import convert
-from finance_salaries import SalaryExtractor
+from finance.finance_extractor import FileStager
+from finance.finance_listener import ComptesModifiedHandler
+from finance.finance_salaries import SalaryExtractor
+from watchdog.observers import Observer
+import finance.output as o
+from time import sleep
+
 
 def get_helpstring():
     """ Function that produces the help doc"""
@@ -12,6 +19,8 @@ def get_helpstring():
             -s  :   stage the files to load
             -c  :   convert the files to CSV
             -l :   load the files into the database
+            -salaires : load the salaries
+            -listen : start the listener feature
             -h  :   list the help"""
     return t
 
@@ -24,6 +33,7 @@ def main(args=None, config_file:Path = None):
         run_convert = False
         run_load = False
         run_salaries = False
+        run_listener = False
 
         try:
             for param in args:
@@ -38,6 +48,8 @@ def main(args=None, config_file:Path = None):
                     run_load = True
                 elif param == '-salaires':
                     run_salaries = True
+                elif param == '-listen':
+                    run_listener = True
                 elif param == '-scl':
                     # Extract and merge all at once
                     run_stage = True
@@ -48,27 +60,43 @@ def main(args=None, config_file:Path = None):
         except IndexError:
             print(get_helpstring())
 
-        if run_stage:
-            print('*** Running staging mechanism ***')
-            stage()
+        if run_listener:
+            fs = FileStager()
+            event_handler = ComptesModifiedHandler()
+            observer = Observer()
+            observer.schedule(event_handler, path=fs.get_staging_folder(), recursive=False)
+            observer.start()
+            o.print_title('Starting Listener')
+            try:
+                while True:
+                    o.print_event(f'listening')
+                    sleep(2)
+            except KeyboardInterrupt:
+                observer.stop()
 
-        if run_convert:
-            print('*** Running conversion mechanism ***')
-            convert()
+            observer.join()
+        else:
+            if run_stage:
+                o.print_title('Running staging mechanism')
+                stage()
 
-        if run_load:
-            print('*** Running loading mechanism')
-            load()
+            if run_convert:
+                o.print_title('Running conversion mechanism')
+                convert()
 
-        if run_salaries:
-            print('*** Running salaries loading')
-            se = SalaryExtractor()
-            f = se.get_source_file()
-            wkb = se.get_spreadsheet(f)
-            sheet = se.get_salary_sheet(wkb)
-            salaires = se.parse_salary_sheet(sheet)
-            df = se.convert_salaries_to_dataframe(salaires)
-            se.save_dataframe_to_sql(df)
+            if run_load:
+                o.print_title('Running loading mechanism')
+                load()
+
+            if run_salaries:
+                o.print_title('Running salaries loading')
+                se = SalaryExtractor()
+                f = se.get_source_file()
+                wkb = se.get_spreadsheet(f)
+                sheet = se.get_salary_sheet(wkb)
+                salaires = se.parse_salary_sheet(sheet)
+                df = se.convert_salaries_to_dataframe(salaires)
+                se.save_dataframe_to_sql(df)
 
 
 if __name__ == '__main__':

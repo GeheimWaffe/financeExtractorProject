@@ -7,6 +7,8 @@ import pyexcel_ods3
 from datetime import datetime
 from finance.database import load_to_table
 from finance.database import get_row_count
+import finance.output as o
+import re
 
 from pathlib import Path
 
@@ -28,15 +30,19 @@ class FileStager:
     def sweep_and_push(self, folder: Path, mask: str, targetfolder: Path) -> int:
         files = [p for p in folder.iterdir() if p.name.find(mask)>-1]
         for f in files:
-            print(f'* file found : {f}')
+            o.print_event(f'* file found : {f}')
             shutil.copy2(f, targetfolder)
-            print(f'* file copied in target folder : {targetfolder}')
+            o.print_event(f'* file copied in target folder : {targetfolder}')
 
         return len(files)
 
+    def is_valid_file(self, filename:str) -> bool:
+        mask = r'^Comptes.*'
+        return bool(re.match(mask, filename))
+
     def get_source_files(self):
         p: Path
-        return [p for p in self.__staging_folder__.iterdir() if p.is_file()]
+        return [p for p in self.__staging_folder__.iterdir() if p.is_file() and self.is_valid_file(p.name)]
 
     def get_staging_folder(self):
         return self.__staging_folder__
@@ -57,7 +63,7 @@ class FileConverter:
 
         # get the sheet
         mouvements_sheet = data['Mouvements']
-        print('** sheet retrieved **')
+        o.print_event('sheet retrieved')
 
         # find the first row of the headers
         r = 0
@@ -73,7 +79,7 @@ class FileConverter:
 
         # create a pandas dataframe
         df = pd.DataFrame(mouvements, columns=headers)
-        print('** pandas Dataframe created **')
+        o.print_event('pandas Dataframe created')
         return df
 
     def save_dataframe(self, df: pd.DataFrame, csv_name: str):
@@ -104,8 +110,26 @@ class FileLoader:
 
     def clean_categories(self, col: pd.Series) -> pd.Series:
         """ cleans up the categories by making them unified"""
+        result: pd.Series
         result = col.astype(str)
         result = result.str.title()
+        return result
+
+    def check_correct_date_format(self, col: pd.Series) -> pd.Series:
+        """ verifies the columns"""
+        result = col.astype(str)
+        result = result.apply(lambda date_str: bool(re.match(r'\d{4}-\d{2}-\d{2}\s.+', date_str)))
+        return result
+
+    def parse_date(self, col: pd.Series) -> pd.Series:
+        """ parses the column to a date"""
+        result: pd.Series
+        result = pd.to_datetime(col, format='%Y-%m-%d', exact=True)
+        return result
+
+    def replace_zeroes_with_null(self, col: pd.Series) -> pd.Series:
+        result: pd.Series
+        result = col.replace(0, None)
         return result
 
     def get_fileyear(self, p: Path) -> int:
@@ -131,6 +155,12 @@ class FileLoader:
             # end
             return df
 
+    def check_wrong_dates_in_data_frame(self, df: pd.DataFrame) -> pd.DataFrame:
+        """ Filters the dataframe over the wrong date columns """
+        wrong_dates = self.check_correct_date_format(df['Date'])
+        df = df[wrong_dates]
+        return df
+
     def cleanup_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """
             Cleans up the global data frame
@@ -154,13 +184,13 @@ class FileLoader:
 
         # Clean up the dates
         df = df[df['Date'] != '9999-12-31']
-        df['Date'] = pd.to_datetime(df['Date'])
+        df['Date'] = self.parse_date(df['Date'])
 
         df['Date.Year'] = pd.DatetimeIndex(df['Date']).year
         df['Date.Month'] = pd.DatetimeIndex(df['Date']).month
 
         # clean up the month
-        df['Mois'] = pd.to_datetime(df['Mois'])
+        df['Mois'] = self.parse_date(df['Mois'])
 
         # clean up the catégories
         df['Catégorie'] = self.clean_categories(df['Catégorie'])
@@ -197,19 +227,19 @@ class FileLoader:
         return True
 
 def stage():
-    print("*** Starting Finance Extractor... ***")
+    o.print_title("Starting Finance Extractor...")
 
-    print("* Staging *")
+    o.print_title("Staging")
     fs = FileStager()
-    ct = fs.sweep_and_push(Path.home().joinpath('Bureau'), 'Comptes', fs.get_staging_folder())
-    print(f'{ct} files found and pushed to the staging area')
+    ct = fs.sweep_and_push(Path.home().joinpath('Bureau'), '^Comptes.*ods$', fs.get_staging_folder())
+    o.print_event(f'{ct} files found and pushed to the staging area')
 
 
 def convert():
-    print("** Iterating over the source files")
+    o.print_title("Iterating over the source files")
     fs = FileStager()
     files = fs.get_source_files()
-    print(f'** files found')
+    o.print_event(f'{len(files)} files found')
 
     # iterate over each file
     fc = FileConverter()
@@ -217,22 +247,22 @@ def convert():
     df: pd.DataFrame
     for p in files:
         # calling the read method
-        print(f'extracting the file : {p}')
+        o.print_event(f'extracting the file : {p}')
         df = fc.convert_account_file(p)
-        print(f'dataframe created')
-        print(f'columns : {df.columns}')
-        print(f'rows : {len(df)}')
+        o.print_event(f'dataframe created')
+        o.print_event(f'columns : {df.columns}')
+        o.print_event(f'rows : {len(df)}')
         # save the dataframe
         fc.save_dataframe(df, p.stem)
-        print('** Output saved **')
+        o.print_event('Output saved')
 
 def load():
-    print('** Loading files **')
+    o.print_title('Loading files')
     fc = FileConverter()
-    print(f'* scanning folder : {fc.get_extract_folder()}')
+    o.print_event(f'* scanning folder : {fc.get_extract_folder()}')
     files = fc.get_converted_files()
     files = [f for f in files if f.suffix == '.csv']
-    print(f'{len(files)} files found')
+    o.print_event(f'{len(files)} files found')
 
     # define acceptable columns
     acceptable_columns = ('Catégorie', 'Compte', 'Date', "Date d'insertion",
@@ -246,20 +276,26 @@ def load():
     df: pd.DataFrame
     dataframes = []
     for p in files:
-        print(f'* loading file : {p}')
+        o.print_event(f'loading file : {p}')
         # load the dataframe
         df = fl.load_dataframe_from_csv(p)
-        print(f'* dataframe loaded with following columns : {df.columns}')
+        o.print_event(f'file loaded : {len(df)} rows')
         dataframes.append(df)
 
     # global cleanup
     if len(dataframes) > 0:
         # global merge
         global_df = pd.concat(dataframes)
-        print(f'dataframes merged : {len(global_df)} rows in total')
-        global_df = fl.cleanup_dataframe(global_df)
-        print(f'* global dataframe cleaned up, following columns : {global_df.columns}')
-        loaded_rows = fl.save_dataframe_to_sql(global_df)
-        print(f'dataframe loaded : {loaded_rows} loaded')
+        o.print_event(f'dataframes merged : {len(global_df)} rows in total')
+        o.print_event(f'checking the date formats...')
+        wrong_dates = fl.check_wrong_dates_in_data_frame(global_df)
+        if len(wrong_dates) > 0:
+            o.print_event(f'wrong dates found !')
+            o.print_event(wrong_dates[['Date', 'File Year']])
+        else:
+            global_df = fl.cleanup_dataframe(global_df)
+            o.print_event(f'global dataframe cleaned up')
+            loaded_rows = fl.save_dataframe_to_sql(global_df)
+            o.print_event(f'dataframe loaded : {loaded_rows} loaded')
     else:
-        print(f'no dataframes found')
+        o.print_event(f'no dataframes found')
