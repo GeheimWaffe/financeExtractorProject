@@ -198,6 +198,12 @@ class FileLoader:
         # Add a date checker column
         df['Date Out of Bound'] = df['Date.Year'] > df['File Year']
 
+        # Calculate the provision à récupérer
+        df.reset_index(drop=True, inplace=True)
+        df.loc[~df['Taux de remboursement'].isna(), 'Provision à récupérer'] = df['Dépense'] * df['Taux de remboursement']
+
+        df.drop(columns='Taux de remboursement', inplace=True)
+
         return df
 
     def save_dataframe_to_sql(self, df: pd.DataFrame) -> int:
@@ -256,7 +262,7 @@ def convert():
         fc.save_dataframe(df, p.stem)
         o.print_event('Output saved')
 
-def load():
+def load_files_without_clean() -> pd.DataFrame:
     o.print_title('Loading files')
     fc = FileConverter()
     o.print_event(f'* scanning folder : {fc.get_extract_folder()}')
@@ -270,6 +276,40 @@ def load():
                           'File Year', 'Mois', 'Recette', 'Réglé',
                           'Provision à payer', 'Provision à récupérer',
                           'Date remboursement', 'Organisme')
+
+    fl = FileLoader(acceptable_columns)
+    p: Path
+    df: pd.DataFrame
+    dataframes = []
+    for p in files:
+        o.print_event(f'loading file : {p}')
+        # load the dataframe
+        df = fl.load_dataframe_from_csv(p)
+        o.print_event(f'file loaded : {len(df)} rows')
+        dataframes.append(df)
+
+    if len(dataframes) > 0:
+        # global merge
+        global_df = pd.concat(dataframes)
+    else:
+        global_df = None
+
+    return global_df
+
+def load():
+    o.print_title('Loading files')
+    fc = FileConverter()
+    o.print_event(f'* scanning folder : {fc.get_extract_folder()}')
+    files = fc.get_converted_files()
+    files = [f for f in files if f.suffix == '.csv']
+    o.print_event(f'{len(files)} files found')
+
+    # define acceptable columns
+    acceptable_columns = ('Catégorie', 'Compte', 'Date', "Date d'insertion",
+                          'Description', 'Dépense', 'Economie',
+                          'File Year', 'Mois', 'Recette', 'Réglé',
+                          'Provision à payer', 'Provision à récupérer',
+                          'Date remboursement', 'Organisme', 'Taux de remboursement')
 
     fl = FileLoader(acceptable_columns)
     p: Path
