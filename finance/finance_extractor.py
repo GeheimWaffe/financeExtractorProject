@@ -12,6 +12,7 @@ import re
 
 from pathlib import Path
 
+
 class FileStager:
     """This class has the responsibility for picking the right files and stage them"""
     __staging_folder__ = Path.home().joinpath('Comptes')
@@ -20,6 +21,7 @@ class FileStager:
     for loading into the database.
     checks if the target extract folder exists and if not, creates it
     """
+
     def create_staging_folder(self) -> bool:
         try:
             self.__staging_folder__.mkdir()
@@ -28,7 +30,7 @@ class FileStager:
             return False
 
     def sweep_and_push(self, folder: Path, mask: str, targetfolder: Path) -> int:
-        files = [p for p in folder.iterdir() if p.name.find(mask)>-1]
+        files = [p for p in folder.iterdir() if p.name.find(mask) > -1]
         for f in files:
             o.print_event(f'* file found : {f}')
             shutil.copy2(f, targetfolder)
@@ -36,7 +38,7 @@ class FileStager:
 
         return len(files)
 
-    def is_valid_file(self, filename:str) -> bool:
+    def is_valid_file(self, filename: str) -> bool:
         mask = r'^Comptes.*'
         return bool(re.match(mask, filename))
 
@@ -46,6 +48,7 @@ class FileStager:
 
     def get_staging_folder(self):
         return self.__staging_folder__
+
 
 class FileConverter:
     """This class has the responsibility for converting arrays of ODS files to csv"""
@@ -91,7 +94,6 @@ class FileLoader:
     """ class for loading csv files into the Postgresql database"""
     __table_comptes__ = 'comptes'
     __acceptables_columns = ()
-
 
     def __init__(self, acceptable_columns: set):
         self.__acceptables_columns = acceptable_columns
@@ -200,7 +202,8 @@ class FileLoader:
 
         # Calculate the provision à récupérer
         df.reset_index(drop=True, inplace=True)
-        df.loc[~df['Taux de remboursement'].isna(), 'Provision à récupérer'] = df['Dépense'] * df['Taux de remboursement']
+        df.loc[~df['Taux de remboursement'].isna(), 'Provision à récupérer'] = df['Dépense'] * df[
+            'Taux de remboursement']
 
         df.drop(columns='Taux de remboursement', inplace=True)
 
@@ -232,6 +235,7 @@ class FileLoader:
                 ''.join([filename, ' ', '.csv']))
         return True
 
+
 def stage():
     o.print_title("Starting Finance Extractor...")
 
@@ -261,6 +265,7 @@ def convert():
         # save the dataframe
         fc.save_dataframe(df, p.stem)
         o.print_event('Output saved')
+
 
 def load_files_without_clean() -> pd.DataFrame:
     o.print_title('Loading files')
@@ -295,6 +300,7 @@ def load_files_without_clean() -> pd.DataFrame:
         global_df = None
 
     return global_df
+
 
 def load():
     o.print_title('Loading files')
