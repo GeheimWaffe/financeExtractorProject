@@ -1,8 +1,9 @@
 from unittest import TestCase
-from finance.finance_extractor import FileLoader
+from finance.finance_extractor import FileLoader, FileConverter, DatabaseConverter
 import pandas as pd
 import numpy as np
 from pathlib import Path
+
 
 def generate_dataframe_with_zeroes() -> pd.DataFrame:
     np.random.seed(42)
@@ -18,6 +19,7 @@ def generate_dataframe_with_zeroes() -> pd.DataFrame:
     df = pd.DataFrame(data)
     df.loc[(df['Column1'].index % 2 == 0), 'Column1'] = 0
     return df
+
 
 class TestDatabaseLoad(TestCase):
     def test_1_replace_zeroes(self):
@@ -66,4 +68,12 @@ class TestDatabaseLoad(TestCase):
         self.assertGreater(len(df), 0, 'Dataframe is empty')
         df = fl.check_wrong_dates_in_data_frame(df)
         self.assertEqual(len(df), 6, 'Le dataframe filtré ne contient pas les 6 fausses valeurs')
+
+class TestDatabaseExtract(TestCase):
+    def test_get_transactions(self):
+        fc = DatabaseConverter()
+        df = fc.get_transactions()
+
+        self.assertGreater(len(df), 0, 'No rows founds')
+
 

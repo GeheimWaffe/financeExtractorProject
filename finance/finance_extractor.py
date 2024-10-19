@@ -5,6 +5,9 @@ import shutil
 import pandas as pd
 import pyexcel_ods3
 from datetime import datetime
+
+import sqlalchemy
+
 from finance.database import load_to_table
 from finance.database import get_row_count
 import finance.output as o
@@ -90,6 +93,23 @@ class FileConverter:
         df.to_csv(self.__extract_folder__.joinpath(csv_name + '.csv'))
 
 
+class DatabaseConverter():
+    """ Class which extracts from the SQLite database the dataframe"""
+    __connection_string__ = 'sqlite+pysqlite:///' + Path().home().joinpath('finance.sqlite').as_posix()
+
+    def get_transactions(self) -> pd.DataFrame:
+        """ This class loads from the sqlite database"""
+        e = sqlalchemy.create_engine(self.__connection_string__)
+        with e.connect() as conn:
+            df = pd.read_sql_table('comptes', conn)
+
+        df.set_index('index', inplace=True)
+        # Add a date checker column
+        df['Date Out of Bound'] = df['Date'].dt.year > df['File Year']
+
+        return df
+
+
 class FileLoader:
     """ class for loading csv files into the Postgresql database"""
     __table_comptes__ = 'comptes'
@@ -163,16 +183,18 @@ class FileLoader:
         df = df[wrong_dates]
         return df
 
+    def keep_only_acceptable_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        # first we select the right columns
+        droppable_columns = [x for x in df.columns if x not in self.__acceptables_columns]
+        return df.drop(columns=droppable_columns)
+
     def cleanup_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """
             Cleans up the global data frame
             :param df: the data frame to be cleaned up
             :return: a cleaned up data frame
             """
-        # first we select the right columns
-        droppable_columns = [x for x in df.columns if x not in self.__acceptables_columns]
-
-        df = df.drop(columns=droppable_columns)
+        df = self.keep_only_acceptable_columns(df)
 
         # Then we convert to proper numeric types the Dépenses and Recettes
         df['Dépense'] = self.replace_euros_in_column(df['Dépense'])
@@ -188,9 +210,6 @@ class FileLoader:
         df = df[df['Date'] != '9999-12-31']
         df['Date'] = self.parse_date(df['Date'])
 
-        df['Date.Year'] = pd.DatetimeIndex(df['Date']).year
-        df['Date.Month'] = pd.DatetimeIndex(df['Date']).month
-
         # clean up the month
         df['Mois'] = self.parse_date(df['Mois'])
 
@@ -198,14 +217,16 @@ class FileLoader:
         df['Catégorie'] = self.clean_categories(df['Catégorie'])
 
         # Add a date checker column
-        df['Date Out of Bound'] = df['Date.Year'] > df['File Year']
+        df['Date Out of Bound'] = df['Date'].dt.year > df['File Year']
 
         # Calculate the provision à récupérer
         df.reset_index(drop=True, inplace=True)
         df.loc[~df['Taux de remboursement'].isna(), 'Provision à récupérer'] = df['Dépense'] * df[
             'Taux de remboursement']
 
-        df.drop(columns='Taux de remboursement', inplace=True)
+        # Rename the columns
+        df.rename(columns={'N°': 'No', 'N° de référence': 'no_de_reference', 'Fait Marquant': 'fait_marquant',
+                           'Taux de remboursement': 'taux_remboursement'}, inplace=True)
 
         return df
 
@@ -311,11 +332,11 @@ def load():
     o.print_event(f'{len(files)} files found')
 
     # define acceptable columns
-    acceptable_columns = ('Catégorie', 'Compte', 'Date', "Date d'insertion",
-                          'Description', 'Dépense', 'Economie',
-                          'File Year', 'Mois', 'Recette', 'Réglé',
+    acceptable_columns = ('Date', 'N°', 'Description', 'Dépense', 'N° de référence', 'Recette',
+                          'Taux de remboursement', 'Compte', 'Catégorie',
+                          'Economie', 'Réglé', 'Mois', "Date d'insertion",
                           'Provision à payer', 'Provision à récupérer',
-                          'Date remboursement', 'Organisme', 'Taux de remboursement')
+                          'Date remboursement', 'Organisme', 'Fait Marquant', 'File Year')
 
     fl = FileLoader(acceptable_columns)
     p: Path
@@ -345,3 +366,24 @@ def load():
             o.print_event(f'dataframe loaded : {loaded_rows} loaded')
     else:
         o.print_event(f'no dataframes found')
+
+
+def load_from_sqlite():
+    o.print_title('Loading from SQLite database')
+    dc = DatabaseConverter()
+    o.print_event('Retrieving the SQLite content')
+    df = dc.get_transactions()
+    o.print_event('Loading to Postgres Database')
+    # define acceptable columns
+    acceptable_columns = ('Date', 'Description', 'Recette', 'Dépense',
+                          'Compte', 'Catégorie', 'Economie', 'Réglé',
+                          'Mois', "Date d'insertion", 'File Year',
+                          'Provision à payer', 'Provision à récupérer',
+                          'Date remboursement', 'Organisme', 'Date Out of Bound',
+                          'taux_remboursement', 'fait_marquant', 'No',
+                          'no_de_reference')
+
+    fl = FileLoader(acceptable_columns)
+
+    loaded_rows = fl.save_dataframe_to_sql(df)
+    o.print_event(f'dataframe loaded : {loaded_rows} loaded')

@@ -1,7 +1,6 @@
-import time
 from pathlib import Path
 import sys
-from finance.finance_extractor import load
+from finance.finance_extractor import load, load_from_sqlite
 from finance.finance_extractor import stage
 from finance.finance_extractor import convert
 from finance.finance_extractor import FileStager
@@ -19,12 +18,14 @@ def get_helpstring():
             -s  :   stage the files to load
             -c  :   convert the files to CSV
             -l :   load the files into the database
+            -sqlite : load from SQLite into the database
             -salaires : load the salaries
             -listen : start the listener feature
             -h  :   list the help"""
     return t
 
-def main(args=None, config_file:Path = None):
+
+def main(args=None, config_file: Path = None):
     """ Running the extraction program """
 
     if args is None:
@@ -32,6 +33,7 @@ def main(args=None, config_file:Path = None):
         run_stage = False
         run_convert = False
         run_load = False
+        run_load_sqlite = False
         run_salaries = False
         run_listener = False
 
@@ -55,6 +57,8 @@ def main(args=None, config_file:Path = None):
                     run_stage = True
                     run_convert = True
                     run_load = True
+                elif param == '-sqlite':
+                    run_load_sqlite = True
                 else:
                     print(get_helpstring())
         except IndexError:
@@ -87,6 +91,9 @@ def main(args=None, config_file:Path = None):
             if run_load:
                 o.print_title('Running loading mechanism')
                 load()
+            if run_load_sqlite:
+                o.print_title('Running loading from SQLite')
+                load_from_sqlite()
 
             if run_salaries:
                 o.print_title('Running salaries loading')
